@@ -30,7 +30,6 @@ struct Header<LeftIcon: View, RightIcon: View>: View {
 
             Spacer()
 
-            // Title
             NavigationLink(destination: HomeView()) {
                 Text(title)
                     .font(.system(size: 18, weight: .bold))

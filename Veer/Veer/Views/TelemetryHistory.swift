@@ -79,54 +79,54 @@ struct TelemetryTrip: Identifiable {
 
 // MARK: - Demo Data
 
-extension TelemetryTrip {
-    static let demoTrips: [TelemetryTrip] = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        func safeDate(_ str: String) -> Date {
-            return formatter.date(from: str) ?? Date()
-        }
-
-        return [
-            TelemetryTrip(
-                id: "68b962562d5900ff5761f1cd",
-                startTime: safeDate("2025-09-04T09:56:37.702Z"),
-                endTime: safeDate("2025-09-04T09:57:12.273Z"),
-                drivingScore: 10,
-                durationMinutes: 1,
-                distanceCoveredKM: 0,
-                startAddress: "H8MH+CVM, Kurukunama 332105, Delta, Nigeria",
-                endAddress: "Sterling Towers, 20 Marina Rd, Lagos Island, Lagos 102273, Lagos, Nigeria"
-            ),
-            TelemetryTrip(
-                id: "68b81fa341456ac855baf8bc",
-                startTime: safeDate("2025-09-03T10:59:46.077Z"),
-                endTime: safeDate("2025-09-03T11:00:55.139Z"),
-                drivingScore: 0,
-                durationMinutes: 1,
-                distanceCoveredKM: 0.561269,
-                startAddress: "110 Magodo Dr, Lagos, Nigeria",
-                endAddress: "110 Magodo Dr, Lagos, Nigeria"
-            ),
-            TelemetryTrip(
-                id: "68b81e4141456ac855bad4e5",
-                startTime: safeDate("2025-09-03T10:53:52.388Z"),
-                endTime: safeDate("2025-09-03T10:56:59.837Z"),
-                drivingScore: 7,
-                durationMinutes: 3,
-                distanceCoveredKM: 3.032214,
-                startAddress: "110 Magodo Dr, Lagos, Nigeria",
-                endAddress: "110 Magodo Dr, Lagos, Nigeria"
-            ),
-        ]
-    }()
-}
+// extension TelemetryTrip {
+//    static let demoTrips: [TelemetryTrip] = {
+//        let formatter = ISO8601DateFormatter()
+//        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+//
+//        func safeDate(_ str: String) -> Date {
+//            return formatter.date(from: str) ?? Date()
+//        }
+//
+//        return [
+//            TelemetryTrip(
+//                id: "68b962562d5900ff5761f1cd",
+//                startTime: safeDate("2025-09-04T09:56:37.702Z"),
+//                endTime: safeDate("2025-09-04T09:57:12.273Z"),
+//                drivingScore: 10,
+//                durationMinutes: 1,
+//                distanceCoveredKM: 0,
+//                startAddress: "H8MH+CVM, Kurukunama 332105, Delta, Nigeria",
+//                endAddress: "Sterling Towers, 20 Marina Rd, Lagos Island, Lagos 102273, Lagos, Nigeria"
+//            ),
+//            TelemetryTrip(
+//                id: "68b81fa341456ac855baf8bc",
+//                startTime: safeDate("2025-09-03T10:59:46.077Z"),
+//                endTime: safeDate("2025-09-03T11:00:55.139Z"),
+//                drivingScore: 0,
+//                durationMinutes: 1,
+//                distanceCoveredKM: 0.561269,
+//                startAddress: "110 Magodo Dr, Lagos, Nigeria",
+//                endAddress: "110 Magodo Dr, Lagos, Nigeria"
+//            ),
+//            TelemetryTrip(
+//                id: "68b81e4141456ac855bad4e5",
+//                startTime: safeDate("2025-09-03T10:53:52.388Z"),
+//                endTime: safeDate("2025-09-03T10:56:59.837Z"),
+//                drivingScore: 7,
+//                durationMinutes: 3,
+//                distanceCoveredKM: 3.032214,
+//                startAddress: "110 Magodo Dr, Lagos, Nigeria",
+//                endAddress: "110 Magodo Dr, Lagos, Nigeria"
+//            ),
+//        ]
+//    }()
+// }
 
 // MARK: - TelemetryHistoryView
 
 struct TelemetryHistoryView: View {
-    @State private var trips: [TelemetryTrip] = TelemetryTrip.demoTrips
+    @State private var trips: [TelemetryTrip] = []
     @State private var isLoading = false
 
     @EnvironmentObject var toast: ToastManager
@@ -137,6 +137,61 @@ struct TelemetryHistoryView: View {
         let avgScore = trips.map { $0.drivingScore }.reduce(0, +) / Double(trips.count)
         let latestChange = trips.count > 1 ? (trips.last!.drivingScore - trips[trips.count - 2].drivingScore) : 0
         return (String(format: "%.1f", avgScore), latestChange)
+    }
+
+    private func fetchHistory() {
+        Task {
+            isLoading = true
+            do {
+                let response = try await ApiRequest("/telematics/trips/history?limit=100000000")
+
+                if let data = response["data"] as? [String: Any],
+                   let tripDicts = data["trips"] as? [[String: Any]]
+                {
+                    let formatter = ISO8601DateFormatter()
+                    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+                    let mappedTrips: [TelemetryTrip] = tripDicts.compactMap { trip in
+                        guard
+                            let id = trip["_id"] as? String,
+                            let startTimeStr = trip["startTime"] as? String,
+                            let endTimeStr = trip["endTime"] as? String,
+                            let drivingScore = trip["drivingScore"] as? Double,
+                            let durationMinutes = trip["durationMinutes"] as? Int,
+                            let distanceCoveredKM = trip["distanceCoveredKM"] as? Double,
+                            let startLocation = trip["startLocation"] as? [String: Any],
+                            let endLocation = trip["endLocation"] as? [String: Any],
+                            let startAddress = startLocation["address"] as? String,
+                            let endAddress = endLocation["address"] as? String,
+                            let startDate = formatter.date(from: startTimeStr),
+                            let endDate = formatter.date(from: endTimeStr)
+                        else {
+                            return nil
+                        }
+
+                        return TelemetryTrip(
+                            id: id,
+                            startTime: startDate,
+                            endTime: endDate,
+                            drivingScore: drivingScore,
+                            durationMinutes: durationMinutes,
+                            distanceCoveredKM: distanceCoveredKM,
+                            startAddress: startAddress,
+                            endAddress: endAddress
+                        )
+                    }
+
+                    await MainActor.run {
+                        self.trips = mappedTrips
+                    }
+                } else {
+                    print("⚠️ Could not parse trips")
+                }
+            } catch {
+                print("🔥 Error fetching history:", error.localizedDescription)
+            }
+            isLoading = false
+        }
     }
 
     var body: some View {
@@ -159,19 +214,17 @@ struct TelemetryHistoryView: View {
                 ScrollView {
                     Spacer()
                     HStack(spacing: 16) {
-                        // Left icon in circle
                         ZStack {
                             Circle()
                                 .fill(Color.white)
                                 .frame(width: 32, height: 32)
                                 .shadow(color: .black.opacity(0.2), radius: 6, x: 0, y: 4)
 
-                            Image(systemName: "chevron.left") // "<"
+                            Image(systemName: "chevron.left")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.black)
                         }
 
-                        // Middle text
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Driving Score")
                                 .font(.subheadline)
@@ -310,16 +363,20 @@ struct TelemetryHistoryView: View {
                     }
                     .padding(.vertical)
                 }
+                .padding(.bottom, 40)
             }
         }
-        // optional toast overlay — remove if you don't have ToastManager/ToastView
         .overlay(alignment: .top) {
             ToastView(manager: toast)
+        }
+        .onAppear {
+            Task {
+                fetchHistory()
+            }
         }
     }
 }
 
-// Preview (if you don't have ToastManager in previews, remove .environmentObject)
 #Preview {
     TelemetryHistoryView()
         .environmentObject(ToastManager())
